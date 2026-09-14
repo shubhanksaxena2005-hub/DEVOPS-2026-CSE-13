@@ -1,0 +1,7 @@
+node_modules
+dist
+*.log
+.env
+*.onedrive-broken
+server/uploads/*
+!server/uploads/.gitkeep
