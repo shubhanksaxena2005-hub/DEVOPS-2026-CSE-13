@@ -1,0 +1,9 @@
+services:
+  agrisathi-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agrisathi
+    container_name: agrisathi-frontend
+    ports:
+      - "8081:80"
