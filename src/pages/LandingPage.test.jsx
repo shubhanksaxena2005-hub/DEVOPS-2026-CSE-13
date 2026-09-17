@@ -14,17 +14,24 @@ function renderLandingPage() {
 describe('LandingPage', () => {
   it('renders the navbar logo/brand name', () => {
     renderLandingPage();
-    // Logo appears in navbar; AgriSathi text should be present at least once
+    // Logo appears in navbar and footer; AgriSathi text should be present at least once
     expect(screen.getAllByText('AgriSathi').length).toBeGreaterThan(0);
+  });
+
+  it('renders the navigation links', () => {
+    renderLandingPage();
+    ['Platform', 'How It Works', 'For Farmers', 'Market Prices', 'Resources'].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
   });
 
   it('renders the hero heading and description', () => {
     renderLandingPage();
     expect(
-      screen.getByRole('heading', { name: /grow more with smarter decisions/i, level: 1 })
+      screen.getByRole('heading', { name: /better decisions\.\s*better harvests\./i, level: 1 })
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/crop recommendations, weather alerts, mandi prices and expert advice/i)
+      screen.getByText(/crop recommendations, weather alerts, mandi prices and expert guidance/i)
     ).toBeInTheDocument();
   });
 
@@ -39,45 +46,62 @@ describe('LandingPage', () => {
     loginLinks.forEach((link) => expect(link).toHaveAttribute('href', '/login'));
   });
 
-  it('renders all feature cards', () => {
+  it('renders the Field Snapshot panel', () => {
     renderLandingPage();
-    // Some feature titles are repeated in the footer links, so allow multiple matches.
-    const featureTitles = [
-      'Crop Recommendations',
-      'Weather Updates',
-      'Mandi Prices',
-      'Disease Detection',
-      'Fertilizer Guidance',
-      'Government Schemes',
-      'Crop Calendar',
-      'Expense Tracking',
-      'Expert Consultation',
-    ];
-    featureTitles.forEach((title) => {
+    expect(screen.getByText('FIELD SNAPSHOT')).toBeInTheDocument();
+    expect(screen.getAllByText(/nashik, maharashtra/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders the trust statistics', () => {
+    renderLandingPage();
+    expect(screen.getByText('Trusted by the Field')).toBeInTheDocument();
+    expect(screen.getByText('2,800+')).toBeInTheDocument();
+    expect(screen.getByText('500+')).toBeInTheDocument();
+    expect(screen.getByText('Active Farmers')).toBeInTheDocument();
+  });
+
+  it('renders the core features', () => {
+    renderLandingPage();
+    expect(screen.getByText('Everything You Need to Make the Next Move')).toBeInTheDocument();
+    ['Crop Recommendations', 'Weather Alerts', 'Mandi Prices', 'Expert Advice'].forEach((title) => {
       expect(screen.getAllByText(title).length).toBeGreaterThan(0);
     });
   });
 
-  it('renders the "How It Works" steps', () => {
+  it('renders the user groups section', () => {
     renderLandingPage();
-    expect(screen.getByText('Set Up Your Farm Profile')).toBeInTheDocument();
-    expect(screen.getByText('Get Daily Farming Guidance')).toBeInTheDocument();
-    expect(screen.getByText('Make Better Decisions')).toBeInTheDocument();
+    expect(screen.getByText('Built for the People Who Work in Agriculture')).toBeInTheDocument();
+    ['Farmers', 'Field Officers', 'Agri Dealers', 'Procurement Teams'].forEach((title) => {
+      expect(screen.getByText(title)).toBeInTheDocument();
+    });
   });
 
-  it('renders the benefits section', () => {
+  it('renders the workflow steps', () => {
     renderLandingPage();
-    expect(screen.getByText('Higher Yield')).toBeInTheDocument();
-    expect(screen.getByText('Water Efficiency')).toBeInTheDocument();
-    expect(screen.getByText('Risk Protection')).toBeInTheDocument();
-    expect(screen.getByText('Better Prices')).toBeInTheDocument();
+    ['Check', 'Understand', 'Decide', 'Act'].forEach((title) => {
+      expect(screen.getByText(title)).toBeInTheDocument();
+    });
   });
 
-  it('renders the CTA section with a link to the register page', () => {
+  it('renders the mandi price table', () => {
     renderLandingPage();
-    expect(screen.getByText('Start Farming Smarter Today')).toBeInTheDocument();
-    const ctaLink = screen.getByRole('link', { name: /create your free account/i });
-    expect(ctaLink).toHaveAttribute('href', '/register');
+    expect(screen.getByText("Today's Mandi Snapshot")).toBeInTheDocument();
+    expect(screen.getByText('Wheat')).toBeInTheDocument();
+    expect(screen.getByText('Onion')).toBeInTheDocument();
+    expect(screen.getByText(/ludhiana, punjab/i)).toBeInTheDocument();
+  });
+
+  it('renders the testimonials section', () => {
+    renderLandingPage();
+    expect(screen.getByText('From the Field')).toBeInTheDocument();
+    expect(screen.getByText('Ramesh Yadav')).toBeInTheDocument();
+  });
+
+  it('renders the final CTA section with a link to the register page', () => {
+    renderLandingPage();
+    expect(
+      screen.getByText('Make Your Next Farming Decision With Confidence.')
+    ).toBeInTheDocument();
   });
 
   it('renders the footer with contact and copyright details', () => {

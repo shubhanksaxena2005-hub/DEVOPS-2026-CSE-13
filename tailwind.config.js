@@ -36,6 +36,20 @@ export default {
           500: '#bf9435',
           600: '#a67c2c',
         },
+        // Agriculture-industry palette used by the public marketing pages
+        // (LandingPage, PublicNavbar). Additive only — does not replace the
+        // brand/earth/gold scales the dashboard already relies on.
+        forest: '#14532D',
+        'forest-light': '#2F7D32',
+        crop: '#4F9D3A',
+        clay: '#795548',
+        soil: '#5D4037',
+        sand: '#F4EBDD',
+        harvest: '#D9A441',
+        mandi: '#D97706',
+        ink: '#17211B',
+        muted: '#5F6B61',
+        cream: '#F7F5EF',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
