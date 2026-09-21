@@ -1,10 +1,11 @@
 name: Automated Weekly Report Generation
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+
+  schedule:
+    # Every Saturday at 12:00 PM IST
+    - cron: "30 6 * * 6"
 
 jobs:
   generate-report:
