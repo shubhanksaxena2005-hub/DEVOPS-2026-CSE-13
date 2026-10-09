@@ -5,3 +5,4 @@ dist
 *.onedrive-broken
 server/uploads/*
 !server/uploads/.gitkeep
+reports
