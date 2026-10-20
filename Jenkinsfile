@@ -118,6 +118,11 @@ pipeline {
             }
         }
 
+        aborted {
+            // Stopped by hand or by timeout: don't leave the commit stuck on "pending"
+            script { setGitHubStatus('ERROR', 'Build aborted') }
+        }
+
         fixed {
             // Previous build was broken, this one is green again
             script { notify('FIXED') }
