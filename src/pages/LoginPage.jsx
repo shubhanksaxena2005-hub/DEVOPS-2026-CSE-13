@@ -1,20 +1,18 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Sprout, Eye, EyeOff } from 'lucide-react';
-
-const roles = [
-  { key: 'farmer', label: 'Farmer' },
-  { key: 'admin', label: 'Admin' },
-];
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, login } = useAuth();
 
-  const [role, setRole] = useState('farmer');
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -44,16 +42,23 @@ export default function LoginPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setServerError('');
     if (!validate()) return;
 
     setLoading(true);
-    setTimeout(() => {
+    try {
+      await login(formData.email.trim(), formData.password);
+      navigate(location.state?.from || '/farmer/dashboard', { replace: true });
+    } catch (err) {
+      setServerError(err.message);
       setLoading(false);
-      navigate(role === 'admin' ? '/admin/dashboard' : '/farmer/dashboard');
-    }, 800);
+    }
   };
+
+  // Already logged in -> go straight to the dashboard
+  if (user) return <Navigate to="/farmer/dashboard" replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-earth-50 px-4 py-12">
@@ -68,22 +73,11 @@ export default function LoginPage() {
 
         <h2 className="text-lg font-semibold text-gray-900 text-center mb-6">Login to your account</h2>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          {roles.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRole(r.key)}
-              className={`rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors ${
-                role === r.key
-                  ? 'border-green-700 bg-green-50 text-green-700'
-                  : 'border-earth-300 text-gray-600 hover:bg-earth-50'
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        {serverError && (
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {serverError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>

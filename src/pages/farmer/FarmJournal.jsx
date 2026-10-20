@@ -1,168 +1,222 @@
-import { useState } from 'react';
-import { BookOpen, Plus, Camera, CalendarDays, Sprout, X } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { BookOpen, Plus, Pencil, Trash2, Clock, Sprout } from 'lucide-react';
 
 import PageHeader from '../../components/ui/PageHeader';
 import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
+import Button from '../../components/ui/Button';
 import { Input, Select, TextArea, FieldGroup } from '../../components/ui/FormInputs';
+import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StatusState';
+import { api, formatDate, toDateInput } from '../../lib/api';
 
-import { activities } from '../../data/mockData';
+// Must match the activity types allowed by the FarmActivity model
+export const ACTIVITY_TYPES = ['Sowing', 'Weeding', 'Fertilizer', 'Pesticide', 'Irrigation', 'Harvest', 'Inspection', 'Labor', 'Other'];
+
+const typeColors = {
+  Sowing: 'green',
+  Weeding: 'earth',
+  Fertilizer: 'purple',
+  Pesticide: 'red',
+  Irrigation: 'blue',
+  Harvest: 'amber',
+  Inspection: 'gray',
+  Labor: 'earth',
+  Other: 'gray',
+};
+
+const newForm = () => ({ date: toDateInput(), title: '', activityType: 'Sowing', cropName: '', timeSpent: '', notes: '' });
 
 export default function FarmJournal() {
-  const [showAddActivity, setShowAddActivity] = useState(false);
-  const [journal, setJournal] = useState(activities);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [activities, setActivities] = useState(null);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, activity = edit
+  const [form, setForm] = useState(newForm);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file || !file.type.startsWith('image/')) return;
+  const load = useCallback(() => {
+    setError('');
+    api
+      .get('/activities')
+      .then((res) => setActivities(res.activities))
+      .catch((err) => setError(err.message));
+  }, []);
 
-    const reader = new FileReader();
-    reader.onload = (event) => setImagePreview(event.target.result);
-    reader.readAsDataURL(file);
+  useEffect(load, [load]);
+
+  const openNew = () => {
+    setForm(newForm());
+    setFormError('');
+    setEditing({});
   };
 
-  const handleAddActivity = (e) => {
+  const openEdit = (activity) => {
+    setForm({
+      date: toDateInput(activity.date),
+      title: activity.title,
+      activityType: activity.activityType,
+      cropName: activity.cropName || '',
+      timeSpent: activity.timeSpent || '',
+      notes: activity.notes || '',
+    });
+    setFormError('');
+    setEditing(activity);
+  };
+
+  const handleChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
-    const newActivity = {
-      id: journal.length + 1,
-      date: formData.get('date'),
-      crop: formData.get('crop'),
-      activity: formData.get('activity'),
-      notes: formData.get('notes'),
-      time: 'Recorded manually',
+    if (!form.title.trim()) return setFormError('Activity title is required');
+
+    const payload = {
+      date: form.date,
+      title: form.title.trim(),
+      activityType: form.activityType,
+      cropName: form.cropName.trim(),
+      timeSpent: form.timeSpent.trim(),
+      notes: form.notes.trim(),
     };
-    setJournal([newActivity, ...journal]);
-    setShowAddActivity(false);
-    setImagePreview(null);
+
+    setSaving(true);
+    try {
+      const res = editing._id
+        ? await api.put(`/activities/${editing._id}`, payload)
+        : await api.post('/activities', payload);
+      setActivities((prev) =>
+        [res.activity, ...prev.filter((a) => a._id !== res.activity._id)].sort((a, b) => new Date(b.date) - new Date(a.date))
+      );
+      setEditing(null);
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleDelete = async (activity) => {
+    if (!window.confirm(`Delete "${activity.title}"?`)) return;
+    try {
+      await api.delete(`/activities/${activity._id}`);
+      setActivities((prev) => prev.filter((a) => a._id !== activity._id));
+    } catch (err) {
+      window.alert(err.message);
+    }
+  };
+
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!activities) return <LoadingState text="Loading journal..." />;
+
+  const visible = filter === 'All' ? activities : activities.filter((a) => a.activityType === filter);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Farm Activity Journal"
-        subtitle="Keep a daily record of your farm activities"
+        subtitle="A day-by-day log of the work done on your farm"
         icon={BookOpen}
         actions={
-          <button onClick={() => setShowAddActivity(true)} className="btn-primary">
-            <Plus className="h-4 w-4" /> Add Activity
+          <button onClick={openNew} className="btn-primary">
+            <Plus className="h-4 w-4" /> Log Activity
           </button>
         }
       />
 
-      {/* Timeline */}
-      <div className="relative">
-        <div className="absolute left-5 sm:left-6 top-0 bottom-0 w-0.5 bg-green-200" />
+      <div className="card p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 className="font-semibold text-gray-900">
+            {activities.length} {activities.length === 1 ? 'entry' : 'entries'}
+          </h2>
+          <select
+            aria-label="Filter by activity type"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="input sm:w-48"
+          >
+            <option>All</option>
+            {ACTIVITY_TYPES.map((t) => (
+              <option key={t}>{t}</option>
+            ))}
+          </select>
+        </div>
 
-        <div className="space-y-6">
-          {journal.map((activity) => (
-            <div key={activity.id} className="relative pl-14 sm:pl-16">
-              <div className="absolute left-3.5 sm:left-[19px] top-5 w-4 h-4 rounded-full bg-white border-2 border-green-600" />
-
-              <div className="card p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-lg bg-green-100 text-green-700">
-                      <Sprout className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{activity.activity}</h3>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <Badge color="green">{activity.crop}</Badge>
-                        <span className="text-xs text-gray-500">
-                          <CalendarDays className="h-3 w-3 inline mr-1 -mt-0.5" />
-                          {activity.date}
+        {visible.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title={activities.length === 0 ? 'Your journal is empty' : 'No entries of this type'}
+            message={activities.length === 0 ? 'Click "Log Activity" to add your first entry.' : undefined}
+          />
+        ) : (
+          <ol className="relative border-l-2 border-green-100 ml-2 space-y-5">
+            {visible.map((a) => (
+              <li key={a._id} className="ml-5">
+                <span className="absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full bg-green-600 ring-4 ring-white" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-500">{formatDate(a.date)}</p>
+                    <h3 className="font-medium text-gray-900">{a.title}</h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                      <Badge color={typeColors[a.activityType]}>{a.activityType}</Badge>
+                      {a.cropName && (
+                        <span className="flex items-center gap-1">
+                          <Sprout className="h-3.5 w-3.5" /> {a.cropName}
                         </span>
-                        <span className="text-xs text-gray-400">{activity.time}</span>
-                      </div>
+                      )}
+                      {a.timeSpent && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5" /> {a.timeSpent}
+                        </span>
+                      )}
                     </div>
+                    {a.notes && <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{a.notes}</p>}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => openEdit(a)} aria-label="Edit activity" className="p-1.5 rounded text-gray-500 hover:bg-gray-100">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => handleDelete(a)} aria-label="Delete activity" className="p-1.5 rounded text-red-600 hover:bg-red-50">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
-                <p className="text-sm text-gray-600 mt-3 leading-relaxed">{activity.notes}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
 
-      {/* Add activity modal */}
-      <Modal open={showAddActivity} onClose={() => setShowAddActivity(false)} title="Add Farm Activity" size="lg">
-        <form onSubmit={handleAddActivity} className="space-y-4">
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing?._id ? 'Edit Activity' : 'Log Activity'}>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
+          <Input
+            id="title"
+            name="title"
+            label="What did you do? *"
+            placeholder="e.g. Sowed wheat in north plot"
+            value={form.title}
+            onChange={handleChange}
+          />
           <FieldGroup cols={2}>
-            <div>
-              <label className="label">Date</label>
-              <input type="date" name="date" required className="input" />
-            </div>
-            <div>
-              <label className="label">Crop</label>
-              <select name="crop" required className="input">
-                <option value="">Select crop</option>
-                <option>Soybean</option>
-                <option>Cotton</option>
-                <option>Onion</option>
-                <option>Wheat</option>
-                <option>All Crops</option>
-              </select>
-            </div>
+            <Input id="date" name="date" type="date" label="Date" value={form.date} onChange={handleChange} />
+            <Select id="activityType" name="activityType" label="Activity type" value={form.activityType} onChange={handleChange}>
+              {ACTIVITY_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
+            </Select>
           </FieldGroup>
-
-          <div>
-            <label className="label">Activity</label>
-            <input
-              type="text"
-              name="activity"
-              required
-              placeholder="e.g. Weeding, Fertilizer application, Pest scouting"
-              className="input"
-            />
-          </div>
-
-          <div>
-            <label className="label">Notes</label>
-            <textarea
-              name="notes"
-              required
-              placeholder="Describe what you did and any observations..."
-              className="input min-h-[120px]"
-            />
-          </div>
-
-          {/* Image upload */}
-          <div>
-            <label className="label">Photo (optional)</label>
-            {!imagePreview ? (
-              <label className="border-2 border-dashed border-earth-300 rounded-xl p-6 text-center cursor-pointer hover:border-green-400 hover:bg-earth-50 transition-colors block">
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
-                <Camera className="h-6 w-6 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Click to upload a farm photo</p>
-                <p className="text-xs text-gray-400 mt-1">JPG or PNG</p>
-              </label>
-            ) : (
-              <div className="relative">
-                <img
-                  src={imagePreview}
-                  alt="Activity preview"
-                  className="max-h-48 rounded-lg object-contain bg-earth-100 mx-auto"
-                />
-                <button
-                  type="button"
-                  onClick={() => setImagePreview(null)}
-                  className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow hover:bg-gray-100"
-                >
-                  <X className="h-4 w-4 text-gray-600" />
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowAddActivity(false)} className="btn-secondary">
+          <FieldGroup cols={2}>
+            <Input id="cropName" name="cropName" label="Crop" placeholder="e.g. Wheat" value={form.cropName} onChange={handleChange} />
+            <Input id="timeSpent" name="timeSpent" label="Time spent" placeholder="e.g. 3 hours" value={form.timeSpent} onChange={handleChange} />
+          </FieldGroup>
+          <TextArea id="notes" name="notes" label="Notes" value={form.notes} onChange={handleChange} />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setEditing(null)}>
               Cancel
-            </button>
-            <button type="submit" className="btn-primary">
-              Save Activity
-            </button>
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Entry'}
+            </Button>
           </div>
         </form>
       </Modal>

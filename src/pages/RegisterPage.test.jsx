@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import RegisterPage from './RegisterPage';
 
 const mockNavigate = vi.fn();
+const mockRegister = vi.fn();
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -14,6 +15,10 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: null, register: mockRegister }),
+}));
+
 function renderRegisterPage() {
   return render(
     <MemoryRouter>
@@ -22,9 +27,17 @@ function renderRegisterPage() {
   );
 }
 
+async function fillValidForm(user) {
+  await user.type(screen.getByLabelText(/full name/i), 'Farmer Singh');
+  await user.type(screen.getByLabelText(/email address/i), 'farmer@example.com');
+  await user.type(screen.getByLabelText(/^password$/i), 'secret123');
+  await user.type(screen.getByLabelText(/confirm password/i), 'secret123');
+}
+
 describe('RegisterPage', () => {
   beforeEach(() => {
     mockNavigate.mockClear();
+    mockRegister.mockReset();
   });
 
   it('renders heading and all form fields', () => {
@@ -46,7 +59,7 @@ describe('RegisterPage', () => {
     expect(screen.getByText(/email is required/i)).toBeInTheDocument();
     expect(screen.getByText(/password is required/i)).toBeInTheDocument();
     expect(screen.getByText(/please confirm your password/i)).toBeInTheDocument();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockRegister).not.toHaveBeenCalled();
   });
 
   it('shows an error when passwords do not match', async () => {
@@ -60,7 +73,7 @@ describe('RegisterPage', () => {
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
     expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockRegister).not.toHaveBeenCalled();
   });
 
   it('toggles password visibility when clicking the eye icon', async () => {
@@ -77,19 +90,32 @@ describe('RegisterPage', () => {
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
-  it('shows a loading state and navigates to /login on successful submit', async () => {
+  it('creates the account via the API and goes to the dashboard', async () => {
+    mockRegister.mockResolvedValue({ name: 'Farmer Singh' });
     const user = userEvent.setup();
     renderRegisterPage();
 
-    await user.type(screen.getByLabelText(/full name/i), 'Farmer Singh');
-    await user.type(screen.getByLabelText(/email address/i), 'farmer@example.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'secret123');
-    await user.type(screen.getByLabelText(/confirm password/i), 'secret123');
+    await fillValidForm(user);
     await user.click(screen.getByRole('button', { name: /create account/i }));
 
-    expect(screen.getByText(/creating account\.\.\./i)).toBeInTheDocument();
+    expect(mockRegister).toHaveBeenCalledWith({
+      name: 'Farmer Singh',
+      email: 'farmer@example.com',
+      password: 'secret123',
+    });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/farmer/dashboard', { replace: true }));
+  });
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'), { timeout: 2000 });
+  it('shows the server error when the email is already registered', async () => {
+    mockRegister.mockRejectedValue(new Error('User already exists with this email'));
+    const user = userEvent.setup();
+    renderRegisterPage();
+
+    await fillValidForm(user);
+    await user.click(screen.getByRole('button', { name: /create account/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already exists/i);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('renders a link back to the login page', () => {

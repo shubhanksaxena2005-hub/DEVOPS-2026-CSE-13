@@ -1,94 +1,132 @@
-import { useState } from 'react';
-import {
-  Wallet,
-  Plus,
-  TrendingUp,
-  TrendingDown,
-  IndianRupee,
-  PieChart as PieChartIcon,
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  LineChart,
-  Line,
-} from 'recharts';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Wallet, Plus, Pencil, Trash2, CalendarDays, Receipt, PieChart as PieChartIcon } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 
 import PageHeader from '../../components/ui/PageHeader';
 import DashboardCard from '../../components/ui/DashboardCard';
 import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import Badge from '../../components/ui/Badge';
+import Button from '../../components/ui/Button';
 import { Input, Select, FieldGroup } from '../../components/ui/FormInputs';
+import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StatusState';
+import { api, formatDate, formatINR, toDateInput } from '../../lib/api';
 
-import { expenses, expenseCategories, estimatedRevenue } from '../../data/mockData';
+// Must match the categories allowed by the Expense model
+export const EXPENSE_CATEGORIES = ['Seeds', 'Fertilizers', 'Pesticides', 'Labor', 'Irrigation', 'Equipment', 'Transport', 'Other'];
 
-// Monthly expense data (mock aggregation)
-const monthlyExpenses = [
-  { month: 'Mar', amount: 3200 },
-  { month: 'Apr', amount: 4800 },
-  { month: 'May', amount: 5200 },
-  { month: 'Jun', amount: 8600 },
-  { month: 'Jul', amount: 7200 },
-  { month: 'Aug', amount: 9970 },
-];
+const COLORS = ['#16a34a', '#65a30d', '#d97706', '#0ea5e9', '#7c3aed', '#b07f50', '#db2777', '#6b7280'];
 
-const categoryData = [
-  { name: 'Seeds', value: 6500, color: '#16a34a' },
-  { name: 'Fertilizers', value: 2550, color: '#65a30d' },
-  { name: 'Pesticides', value: 420, color: '#d97706' },
-  { name: 'Labor', value: 2600, color: '#0ea5e9' },
-  { name: 'Irrigation', value: 950, color: '#7c3aed' },
-  { name: 'Equipment', value: 600, color: '#b07f50' },
-];
+const newForm = () => ({ date: toDateInput(), category: 'Seeds', description: '', amount: '' });
 
 export default function FarmExpenses() {
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [expenseList, setExpenseList] = useState(expenses);
+  const [expenses, setExpenses] = useState(null);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, expense = edit
+  const [form, setForm] = useState(newForm);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const totalExpenses = expenseList.reduce((sum, e) => sum + e.amount, 0);
-  const totalRevenue = Object.values(estimatedRevenue).reduce((sum, crop) => sum + crop.expectedRevenue, 0);
-  const estimatedProfit = totalRevenue - totalExpenses;
+  const load = useCallback(() => {
+    setError('');
+    api
+      .get('/expenses')
+      .then((res) => setExpenses(res.expenses))
+      .catch((err) => setError(err.message));
+  }, []);
 
-  const handleAddExpense = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const newExpense = {
-      id: expenseList.length + 1,
-      date: formData.get('date'),
-      category: formData.get('category'),
-      description: formData.get('description'),
-      amount: parseFloat(formData.get('amount')),
-    };
-    setExpenseList([newExpense, ...expenseList]);
-    setShowAddExpense(false);
+  useEffect(load, [load]);
+
+  const stats = useMemo(() => {
+    const list = expenses || [];
+    const now = new Date();
+    const total = list.reduce((sum, e) => sum + e.amount, 0);
+    const thisMonth = list
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, e) => sum + e.amount, 0);
+    const byCategory = EXPENSE_CATEGORIES.map((name) => ({
+      name,
+      value: list.filter((e) => e.category === name).reduce((sum, e) => sum + e.amount, 0),
+    })).filter((c) => c.value > 0);
+    const top = [...byCategory].sort((a, b) => b.value - a.value)[0];
+    return { total, thisMonth, byCategory, top };
+  }, [expenses]);
+
+  const openNew = () => {
+    setForm(newForm());
+    setFormError('');
+    setEditing({});
   };
 
-  const tableColumns = [
-    {
-      key: 'date',
-      label: 'Date',
-      render: (row) => <span className="text-gray-600">{row.date}</span>,
-    },
-    {
-      key: 'category',
-      label: 'Category',
-      render: (row) => <Badge color="earth">{row.category}</Badge>,
-    },
+  const openEdit = (expense) => {
+    setForm({
+      date: toDateInput(expense.date),
+      category: expense.category,
+      description: expense.description,
+      amount: String(expense.amount),
+    });
+    setFormError('');
+    setEditing(expense);
+  };
+
+  const handleChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.description.trim()) return setFormError('Description is required');
+    if (!(Number(form.amount) > 0)) return setFormError('Amount must be greater than 0');
+
+    const payload = {
+      date: form.date,
+      category: form.category,
+      description: form.description.trim(),
+      amount: Number(form.amount),
+    };
+
+    setSaving(true);
+    try {
+      const res = editing._id
+        ? await api.put(`/expenses/${editing._id}`, payload)
+        : await api.post('/expenses', payload);
+      // replace/insert, keeping newest first
+      setExpenses((prev) =>
+        [res.expense, ...prev.filter((x) => x._id !== res.expense._id)].sort((a, b) => new Date(b.date) - new Date(a.date))
+      );
+      setEditing(null);
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (expense) => {
+    if (!window.confirm(`Delete expense "${expense.description}"?`)) return;
+    try {
+      await api.delete(`/expenses/${expense._id}`);
+      setExpenses((prev) => prev.filter((x) => x._id !== expense._id));
+    } catch (err) {
+      window.alert(err.message);
+    }
+  };
+
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!expenses) return <LoadingState text="Loading expenses..." />;
+
+  const visible = filter === 'All' ? expenses : expenses.filter((e) => e.category === filter);
+
+  const columns = [
+    { key: 'date', label: 'Date', render: (row) => <span className="text-gray-600">{formatDate(row.date)}</span> },
+    { key: 'category', label: 'Category', render: (row) => <Badge color="earth">{row.category}</Badge> },
     { key: 'description', label: 'Description' },
     {
       key: 'amount',
       label: 'Amount',
-      render: (row) => <span className="font-semibold text-gray-900">₹{row.amount.toLocaleString('en-IN')}</span>,
+      render: (row) => <span className="font-semibold text-gray-900">{formatINR(row.amount)}</span>,
     },
   ];
 
@@ -96,190 +134,126 @@ export default function FarmExpenses() {
     <div className="space-y-6">
       <PageHeader
         title="Farm Expenses"
-        subtitle="Track costs and estimate your season's profit"
+        subtitle="Record every cost and see where your money goes"
         icon={Wallet}
         actions={
-          <button onClick={() => setShowAddExpense(true)} className="btn-primary">
+          <button onClick={openNew} className="btn-primary">
             <Plus className="h-4 w-4" /> Add Expense
           </button>
         }
       />
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <DashboardCard title="Total Expenses" value={formatINR(stats.total)} subtitle="All time" icon={Wallet} color="earth" />
         <DashboardCard
-          title="Total Expenses"
-          value={`₹${totalExpenses.toLocaleString('en-IN')}`}
-          subtitle="All recorded expenses"
-          icon={Wallet}
-          color="earth"
+          title="This Month"
+          value={formatINR(stats.thisMonth)}
+          subtitle={new Date().toLocaleDateString('en-IN', { month: 'long' })}
+          icon={CalendarDays}
+          color="amber"
         />
+        <DashboardCard title="Entries" value={expenses.length} subtitle="Expenses recorded" icon={Receipt} color="blue" />
         <DashboardCard
-          title="August Expenses"
-          value={`₹${(9970).toLocaleString('en-IN')}`}
-          subtitle="Current month"
-          icon={IndianRupee}
-          color="red"
-        />
-        <DashboardCard
-          title="Estimated Revenue"
-          value={`₹${totalRevenue.toLocaleString('en-IN')}`}
-          subtitle="Expected from current crops"
-          icon={TrendingUp}
+          title="Top Category"
+          value={stats.top ? stats.top.name : '—'}
+          subtitle={stats.top ? formatINR(stats.top.value) : 'No data yet'}
+          icon={PieChartIcon}
           color="green"
         />
-        <DashboardCard
-          title="Estimated Profit"
-          value={`₹${estimatedProfit.toLocaleString('en-IN')}`}
-          subtitle="Revenue minus expenses"
-          icon={TrendingDown}
-          color={estimatedProfit >= 0 ? 'green' : 'red'}
-        />
       </div>
 
-      {/* Charts */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Monthly trend */}
-        <div className="card p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Monthly Expenses</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyExpenses}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => `₹${v}`}
-                />
-                <Tooltip formatter={(value) => [`₹${value}`, 'Expenses']} />
-                <Bar dataKey="amount" fill="#b07f50" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Category breakdown */}
-        <div className="card p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Expenses by Category</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {categoryData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`₹${value}`, 'Amount']} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Revenue estimate */}
-      <div className="card p-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Revenue Estimate by Crop</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="table-header">Crop</th>
-                <th className="table-header">Area</th>
-                <th className="table-header">Expected Yield</th>
-                <th className="table-header">Market Price</th>
-                <th className="table-header">Estimated Revenue</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {Object.entries(estimatedRevenue).map(([crop, data]) => (
-                <tr key={crop} className="hover:bg-gray-50">
-                  <td className="table-cell font-medium text-gray-900">{crop}</td>
-                  <td className="table-cell text-gray-600">{data.area}</td>
-                  <td className="table-cell text-gray-600">{data.expectedYield}</td>
-                  <td className="table-cell text-gray-600">₹{data.marketPrice.toLocaleString('en-IN')}</td>
-                  <td className="table-cell font-semibold text-green-700">
-                    ₹{data.expectedRevenue.toLocaleString('en-IN')}
-                  </td>
-                </tr>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="card p-5 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h2 className="font-semibold text-gray-900">Expense Records</h2>
+            <select
+              aria-label="Filter by category"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="input sm:w-48"
+            >
+              <option>All</option>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
               ))}
-              <tr className="bg-green-50">
-                <td className="table-cell font-semibold text-gray-900" colSpan="4">Total Expected Revenue</td>
-                <td className="table-cell font-bold text-green-800">₹{totalRevenue.toLocaleString('en-IN')}</td>
-              </tr>
-            </tbody>
-          </table>
+            </select>
+          </div>
+          <Table
+            columns={columns}
+            data={visible}
+            keyField="_id"
+            emptyMessage={expenses.length === 0 ? 'No expenses yet. Click "Add Expense" to record one.' : 'No expenses in this category.'}
+            actions={(row) => (
+              <>
+                <button onClick={() => openEdit(row)} aria-label="Edit expense" className="p-1.5 rounded text-gray-500 hover:bg-gray-100">
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button onClick={() => handleDelete(row)} aria-label="Delete expense" className="p-1.5 rounded text-red-600 hover:bg-red-50">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          />
         </div>
-        <p className="text-xs text-gray-400 mt-3">
-          Estimates based on current mandi prices and expected yields. Actual figures depend on final yield and market conditions at harvest.
-        </p>
+
+        <div className="card p-5">
+          <h2 className="font-semibold text-gray-900 mb-4">By Category</h2>
+          {stats.byCategory.length === 0 ? (
+            <EmptyState title="No data yet" message="The chart fills in as you add expenses." />
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={stats.byCategory} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90} paddingAngle={2}>
+                    {stats.byCategory.map((c) => (
+                      <Cell key={c.name} fill={COLORS[EXPENSE_CATEGORIES.indexOf(c.name)]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatINR(v)} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Expense history */}
-      <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-900">Expense History</h3>
-        </div>
-        <Table columns={tableColumns} data={expenseList} emptyMessage="No expenses recorded yet" />
-      </div>
-
-      {/* Add expense modal */}
-      <Modal open={showAddExpense} onClose={() => setShowAddExpense(false)} title="Add Expense">
-        <form onSubmit={handleAddExpense} className="space-y-4">
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing?._id ? 'Edit Expense' : 'Add Expense'}>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
           <FieldGroup cols={2}>
-            <div>
-              <label className="label">Date</label>
-              <input type="date" name="date" required className="input" />
-            </div>
-            <div>
-              <label className="label">Category</label>
-              <select name="category" required className="input">
-                {expenseCategories.map((cat) => (
-                  <option key={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            <Input id="date" name="date" type="date" label="Date" value={form.date} onChange={handleChange} />
+            <Select id="category" name="category" label="Category" value={form.category} onChange={handleChange}>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </Select>
           </FieldGroup>
-          <div>
-            <label className="label">Description</label>
-            <input
-              type="text"
-              name="description"
-              required
-              placeholder="e.g. DAP fertilizer 50 kg"
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label">Amount (₹)</label>
-            <input
-              type="number"
-              name="amount"
-              required
-              min="1"
-              placeholder="e.g. 1500"
-              className="input"
-            />
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowAddExpense(false)} className="btn-secondary">
+          <Input
+            id="description"
+            name="description"
+            label="Description *"
+            placeholder="e.g. Wheat seeds, 2 bags"
+            value={form.description}
+            onChange={handleChange}
+          />
+          <Input
+            id="amount"
+            name="amount"
+            type="number"
+            min="0"
+            step="1"
+            label="Amount (₹) *"
+            value={form.amount}
+            onChange={handleChange}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setEditing(null)}>
               Cancel
-            </button>
-            <button type="submit" className="btn-primary">
-              Save Expense
-            </button>
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Expense'}
+            </Button>
           </div>
         </form>
       </Modal>

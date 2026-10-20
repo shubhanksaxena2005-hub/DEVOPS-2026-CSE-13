@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import LoginPage from './LoginPage';
 
 const mockNavigate = vi.fn();
+const mockLogin = vi.fn();
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -14,6 +15,10 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ user: null, login: mockLogin }),
+}));
+
 function renderLoginPage() {
   return render(
     <MemoryRouter>
@@ -22,32 +27,42 @@ function renderLoginPage() {
   );
 }
 
+async function fillAndSubmit(user, email = 'farmer@example.com', password = 'secret123') {
+  await user.type(screen.getByLabelText(/email address/i), email);
+  await user.type(screen.getByLabelText(/^password$/i), password);
+  await user.click(screen.getByRole('button', { name: /login/i }));
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     mockNavigate.mockClear();
+    mockLogin.mockReset();
   });
 
-  it('renders heading, email/password fields and role selector', () => {
+  it('renders heading and email/password fields', () => {
     renderLoginPage();
     expect(screen.getByRole('heading', { name: /login to your account/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /farmer/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /admin/i })).toBeInTheDocument();
   });
 
-  it('defaults to the "Farmer" role selected', () => {
-    renderLoginPage();
-    const farmerButton = screen.getByRole('button', { name: /farmer/i });
-    expect(farmerButton.className).toMatch(/border-green-700/);
-  });
-
-  it('allows switching between Farmer and Admin roles', async () => {
+  it('shows validation errors and does not call the API for an empty form', async () => {
     const user = userEvent.setup();
     renderLoginPage();
-    const adminButton = screen.getByRole('button', { name: /admin/i });
-    await user.click(adminButton);
-    expect(adminButton.className).toMatch(/border-green-700/);
+    await user.click(screen.getByRole('button', { name: /login/i }));
+
+    expect(screen.getByText(/email is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/password is required/i)).toBeInTheDocument();
+    expect(mockLogin).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid email address', async () => {
+    const user = userEvent.setup();
+    renderLoginPage();
+    await fillAndSubmit(user, 'not-an-email');
+
+    expect(screen.getByText(/enter a valid email address/i)).toBeInTheDocument();
+    expect(mockLogin).not.toHaveBeenCalled();
   });
 
   it('lets the user type into email and password fields', async () => {
@@ -77,41 +92,34 @@ describe('LoginPage', () => {
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 
-  it('navigates to /farmer/dashboard on submit when role is farmer', async () => {
+  it('logs in through the API and navigates to the dashboard', async () => {
+    mockLogin.mockResolvedValue({ name: 'Farmer' });
     const user = userEvent.setup();
     renderLoginPage();
-    await user.type(screen.getByLabelText(/email address/i), 'farmer@example.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'secret123');
-    await user.click(screen.getByRole('button', { name: /login/i }));
+    await fillAndSubmit(user);
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/farmer/dashboard'), {
-      timeout: 2000,
-    });
-  });
-
-  it('navigates to /admin/dashboard on submit when role is admin', async () => {
-    const user = userEvent.setup();
-    renderLoginPage();
-
-    await user.click(screen.getByRole('button', { name: /admin/i }));
-    await user.type(screen.getByLabelText(/email address/i), 'admin@example.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'secret123');
-    await user.click(screen.getByRole('button', { name: /login/i }));
-
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/dashboard'), {
-      timeout: 2000,
-    });
+    expect(mockLogin).toHaveBeenCalledWith('farmer@example.com', 'secret123');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/farmer/dashboard', { replace: true }));
   });
 
   it('shows a loading state while submitting', async () => {
+    mockLogin.mockReturnValue(new Promise(() => {})); // never resolves
     const user = userEvent.setup();
     renderLoginPage();
-
-    await user.type(screen.getByLabelText(/email address/i), 'farmer@example.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'secret123');
-    await user.click(screen.getByRole('button', { name: /login/i }));
+    await fillAndSubmit(user);
 
     expect(screen.getByText(/logging in\.\.\./i)).toBeInTheDocument();
+  });
+
+  it('shows the server error for wrong credentials and stays on the page', async () => {
+    mockLogin.mockRejectedValue(new Error('Invalid email or password'));
+    const user = userEvent.setup();
+    renderLoginPage();
+    await fillAndSubmit(user);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/invalid email or password/i);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /login/i })).toBeEnabled();
   });
 
   it('renders a link to the register page', () => {

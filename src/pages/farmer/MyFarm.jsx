@@ -1,234 +1,263 @@
-import { useState } from 'react';
-import {
-  MapPin,
-  Ruler,
-  FlaskConical,
-  Droplets,
-  Plus,
-  Pencil,
-  Beaker,
-  Leaf,
-} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Map, Plus, Pencil, Trash2, MapPin, Droplets, Layers } from 'lucide-react';
 
 import PageHeader from '../../components/ui/PageHeader';
-import CropCard from '../../components/ui/CropCard';
 import Modal from '../../components/ui/Modal';
-import Badge from '../../components/ui/Badge';
+import Button from '../../components/ui/Button';
 import { Input, Select, FieldGroup } from '../../components/ui/FormInputs';
-import { InfoBanner } from '../../components/ui/StatusState';
+import { LoadingState, ErrorState, EmptyState } from '../../components/ui/StatusState';
+import { api } from '../../lib/api';
 
-import { farmProfile, currentCrops } from '../../data/mockData';
+const soilTypes = ['Black', 'Red', 'Alluvial', 'Laterite', 'Sandy', 'Clay', 'Loamy'];
+const waterSources = ['Borewell', 'Well', 'Canal', 'River', 'Drip Irrigation', 'Rain-fed'];
 
-const soilNutrients = [
-  { label: 'Nitrogen (N)', value: `${farmProfile.nitrogen} ppm`, status: farmProfile.nitrogen >= 40 ? 'Good' : 'Low', color: 'green' },
-  { label: 'Phosphorus (P)', value: `${farmProfile.phosphorus} ppm`, status: farmProfile.phosphorus >= 35 ? 'Good' : 'Low', color: 'green' },
-  { label: 'Potassium (K)', value: `${farmProfile.potassium} ppm`, status: farmProfile.potassium >= 40 ? 'Good' : 'Low', color: 'green' },
-];
+const emptyForm = {
+  name: '',
+  village: '',
+  district: '',
+  state: '',
+  landArea: '',
+  landUnit: 'acres',
+  soilType: '',
+  soilPh: '',
+  waterSource: '',
+};
+
+const toForm = (farm) => ({
+  name: farm.name,
+  village: farm.location?.village || '',
+  district: farm.location?.district || '',
+  state: farm.location?.state || '',
+  landArea: String(farm.landArea ?? ''),
+  landUnit: farm.landUnit || 'acres',
+  soilType: farm.soilType || '',
+  soilPh: farm.soilPh ?? '',
+  waterSource: farm.waterSource || '',
+});
 
 export default function MyFarm() {
-  const [addCropOpen, setAddCropOpen] = useState(false);
-  const [editFarmOpen, setEditFarmOpen] = useState(false);
+  const [farms, setFarms] = useState(null);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, farm = edit
+  const [form, setForm] = useState(emptyForm);
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(() => {
+    setError('');
+    api
+      .get('/farms')
+      .then((res) => setFarms(res.farms))
+      .catch((err) => setError(err.message));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const openNew = () => {
+    setForm(emptyForm);
+    setFormError('');
+    setEditing({});
+  };
+
+  const openEdit = (farm) => {
+    setForm(toForm(farm));
+    setFormError('');
+    setEditing(farm);
+  };
+
+  const handleChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return setFormError('Farm name is required');
+    if (!(Number(form.landArea) > 0)) return setFormError('Land area must be greater than 0');
+    if (form.soilPh !== '' && (Number(form.soilPh) < 0 || Number(form.soilPh) > 14)) {
+      return setFormError('Soil pH must be between 0 and 14');
+    }
+
+    const payload = {
+      name: form.name.trim(),
+      location: { village: form.village.trim(), district: form.district.trim(), state: form.state.trim() },
+      landArea: Number(form.landArea),
+      landUnit: form.landUnit,
+      soilType: form.soilType,
+      soilPh: form.soilPh === '' ? null : Number(form.soilPh),
+      waterSource: form.waterSource,
+    };
+
+    setSaving(true);
+    try {
+      if (editing._id) {
+        const res = await api.put(`/farms/${editing._id}`, payload);
+        setFarms((prev) => prev.map((f) => (f._id === editing._id ? res.farm : f)));
+      } else {
+        const res = await api.post('/farms', payload);
+        setFarms((prev) => [res.farm, ...prev]);
+      }
+      setEditing(null);
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (farm) => {
+    if (!window.confirm(`Delete "${farm.name}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/farms/${farm._id}`);
+      setFarms((prev) => prev.filter((f) => f._id !== farm._id));
+    } catch (err) {
+      window.alert(err.message);
+    }
+  };
+
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!farms) return <LoadingState text="Loading your farms..." />;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="My Farm"
-        subtitle="Your farm profile, soil health and active crops"
-        icon={MapPin}
+        subtitle="Your land, soil and water details"
+        icon={Map}
         actions={
-          <>
-            <button
-              onClick={() => setEditFarmOpen(true)}
-              className="btn-secondary"
-            >
-              <Pencil className="h-4 w-4" /> Edit Farm
-            </button>
-            <button onClick={() => setAddCropOpen(true)} className="btn-primary">
-              <Plus className="h-4 w-4" /> Add Crop
-            </button>
-          </>
+          <button onClick={openNew} className="btn-primary">
+            <Plus className="h-4 w-4" /> Add Farm
+          </button>
         }
       />
 
-      {/* Farm profile */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Farm details */}
-        <div className="card p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Farm Details</h3>
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <MapPin className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Location</p>
-                <p className="text-sm font-medium text-gray-800">{farmProfile.location}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <Ruler className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Total Land Area</p>
-                <p className="text-sm font-medium text-gray-800">{farmProfile.landArea}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <FlaskConical className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Soil Type</p>
-                <p className="text-sm font-medium text-gray-800">{farmProfile.soilType}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <Droplets className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Water Source</p>
-                <p className="text-sm font-medium text-gray-800">{farmProfile.waterSource}</p>
-              </div>
-            </div>
-          </div>
+      {farms.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon={Map}
+            title="No farms yet"
+            message='Click "Add Farm" to record your first farm.'
+          />
         </div>
-
-        {/* Soil health */}
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Soil Health</h3>
-            <Badge color="blue">Last test: Jun 2026</Badge>
-          </div>
-
-          {/* pH level */}
-          <div className="mb-5">
-            <div className="flex justify-between text-sm mb-1.5">
-              <span className="text-gray-600">Soil pH</span>
-              <span className="font-medium text-gray-900">{farmProfile.soilPh} (Neutral)</span>
-            </div>
-            <div className="h-2 rounded-full bg-gradient-to-r from-amber-400 via-green-500 to-red-500 relative">
-              <div
-                className="absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full border-2 border-white bg-gray-800 shadow"
-                style={{ left: `${farmProfile.soilPh >= 8 ? 100 : ((farmProfile.soilPh - 5) / 4) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Optimal range: 6.0 - 7.5 for most crops
-            </p>
-          </div>
-
-          {/* Nutrients */}
-          <div className="space-y-3">
-            {soilNutrients.map((n) => (
-              <div key={n.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Beaker className="h-4 w-4 text-earth-600" />
-                  <span className="text-sm text-gray-600">{n.label}</span>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {farms.map((farm) => {
+            const place = [farm.location?.village, farm.location?.district, farm.location?.state]
+              .filter(Boolean)
+              .join(', ');
+            return (
+              <div key={farm._id} className="card p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">{farm.name}</h2>
+                    {place && (
+                      <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+                        <MapPin className="h-3.5 w-3.5" /> {place}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => openEdit(farm)}
+                      aria-label={`Edit ${farm.name}`}
+                      className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(farm)}
+                      aria-label={`Delete ${farm.name}`}
+                      className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-900">{n.value}</span>
-                  <Badge color={n.color}>{n.status}</Badge>
-                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-lg bg-green-50 p-3">
+                    <dt className="text-gray-500">Land area</dt>
+                    <dd className="font-semibold text-gray-900">
+                      {farm.landArea} {farm.landUnit}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-earth-50 p-3">
+                    <dt className="text-gray-500 flex items-center gap-1">
+                      <Layers className="h-3.5 w-3.5" /> Soil
+                    </dt>
+                    <dd className="font-semibold text-gray-900">
+                      {farm.soilType || '—'}
+                      {farm.soilPh != null && ` (pH ${farm.soilPh})`}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 p-3 col-span-2">
+                    <dt className="text-gray-500 flex items-center gap-1">
+                      <Droplets className="h-3.5 w-3.5" /> Water source
+                    </dt>
+                    <dd className="font-semibold text-gray-900">{farm.waterSource || '—'}</dd>
+                  </div>
+                </dl>
               </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing?._id ? 'Edit Farm' : 'Add Farm'}>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
+          <Input id="name" name="name" label="Farm name *" value={form.name} onChange={handleChange} />
+          <FieldGroup cols={2}>
+            <Input id="village" name="village" label="Village" value={form.village} onChange={handleChange} />
+            <Input id="district" name="district" label="District" value={form.district} onChange={handleChange} />
+          </FieldGroup>
+          <Input id="state" name="state" label="State" value={form.state} onChange={handleChange} />
+          <FieldGroup cols={2}>
+            <Input
+              id="landArea"
+              name="landArea"
+              type="number"
+              min="0"
+              step="0.01"
+              label="Land area *"
+              value={form.landArea}
+              onChange={handleChange}
+            />
+            <Select id="landUnit" name="landUnit" label="Unit" value={form.landUnit} onChange={handleChange}>
+              <option value="acres">Acres</option>
+              <option value="hectares">Hectares</option>
+              <option value="guntha">Guntha</option>
+            </Select>
+          </FieldGroup>
+          <FieldGroup cols={2}>
+            <Select id="soilType" name="soilType" label="Soil type" value={form.soilType} onChange={handleChange}>
+              <option value="">Select soil type</option>
+              {soilTypes.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </Select>
+            <Input
+              id="soilPh"
+              name="soilPh"
+              type="number"
+              min="0"
+              max="14"
+              step="0.1"
+              label="Soil pH"
+              value={form.soilPh}
+              onChange={handleChange}
+            />
+          </FieldGroup>
+          <Select id="waterSource" name="waterSource" label="Water source" value={form.waterSource} onChange={handleChange}>
+            <option value="">Select water source</option>
+            {waterSources.map((w) => (
+              <option key={w}>{w}</option>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Active crops */}
-      <div>
-        <h3 className="font-semibold text-gray-900 mb-4">Current Crops</h3>
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {currentCrops.map((crop) => (
-            <CropCard key={crop.id} crop={crop} />
-          ))}
-        </div>
-      </div>
-
-      {/* Soil advisory */}
-      <InfoBanner
-        icon={Leaf}
-        title="Soil Advisory"
-        message="Your black soil has good overall nutrient levels. Consider adding organic matter (FYM 4-5 ton/acre) before the rabi season to improve soil structure."
-        color="green"
-      />
-
-      {/* Add Crop Modal */}
-      <Modal open={addCropOpen} onClose={() => setAddCropOpen(false)} title="Add New Crop">
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setAddCropOpen(false); }}>
-          <FieldGroup cols={2}>
-            <Select label="Crop Name" required>
-              <option value="">Select crop</option>
-              <option>Soybean</option>
-              <option>Cotton</option>
-              <option>Onion</option>
-              <option>Wheat</option>
-              <option>Sugarcane</option>
-              <option>Maize</option>
-              <option>Rice</option>
-            </Select>
-            <Input label="Variety" placeholder="e.g. JS-9560" required />
-          </FieldGroup>
-          <FieldGroup cols={2}>
-            <Input label="Area (acres)" type="number" step="0.1" min="0.1" placeholder="e.g. 2.5" required />
-            <Input label="Planting Date" type="date" required />
-          </FieldGroup>
-          <FieldGroup cols={2}>
-            <Select label="Expected Harvest Month">
-              <option>October</option>
-              <option>November</option>
-              <option>December</option>
-              <option>January</option>
-              <option>February</option>
-              <option>March</option>
-              <option>April</option>
-            </Select>
-            <Select label="Soil Type">
-              <option>Black Soil</option>
-              <option>Red Soil</option>
-              <option>Alluvial Soil</option>
-              <option>Sandy Loam</option>
-            </Select>
-          </FieldGroup>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setAddCropOpen(false)} className="btn-secondary">
+          </Select>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setEditing(null)}>
               Cancel
-            </button>
-            <button type="submit" className="btn-primary">
-              Save Crop
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Edit Farm Modal */}
-      <Modal open={editFarmOpen} onClose={() => setEditFarmOpen(false)} title="Edit Farm Details">
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); setEditFarmOpen(false); }}>
-          <FieldGroup cols={2}>
-            <Input label="Land Area (acres)" type="number" step="0.1" defaultValue="5.2" required />
-            <Select label="Soil Type" defaultValue="Black Soil">
-              <option>Black Soil</option>
-              <option>Red Soil</option>
-              <option>Alluvial Soil</option>
-              <option>Sandy Loam</option>
-            </Select>
-          </FieldGroup>
-          <FieldGroup cols={2}>
-            <Input label="Soil pH" type="number" step="0.1" min="4" max="9" defaultValue="7.1" required />
-            <Select label="Water Source" defaultValue="Borewell + Canal">
-              <option>Borewell</option>
-              <option>Canal</option>
-              <option>Well</option>
-              <option>Borewell + Canal</option>
-              <option>Rainfed</option>
-            </Select>
-          </FieldGroup>
-          <FieldGroup cols={3}>
-            <Input label="Nitrogen (ppm)" type="number" defaultValue="42" />
-            <Input label="Phosphorus (ppm)" type="number" defaultValue="38" />
-            <Input label="Potassium (ppm)" type="number" defaultValue="45" />
-          </FieldGroup>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setEditFarmOpen(false)} className="btn-secondary">
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary">
-              Save Changes
-            </button>
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Farm'}
+            </Button>
           </div>
         </form>
       </Modal>
