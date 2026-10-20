@@ -93,7 +93,8 @@ pipeline {
             script {
                 // Show test + coverage summary right on the build in the dashboard
                 def summary = bat(returnStdout: true, script: '@node scripts/ci-summary.js || echo Tests: no report').trim()
-                currentBuild.description = summary
+                // e.g. "Tests: 107 passed, 0 failed ... | Coverage: 51% lines | Full report: Build Artifacts > reports/feedback.txt"
+                currentBuild.description = "${summary} | Full report: Build Artifacts > reports/feedback.txt"
                 echo "CI feedback -> ${currentBuild.currentResult}: ${summary}"
                 env.CI_SUMMARY = summary
             }
