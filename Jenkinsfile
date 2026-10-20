@@ -65,7 +65,10 @@ pipeline {
                 always {
                     // Publish results even when tests fail: per-test results + trend graph on the job page
                     junit allowEmptyResults: true, testResults: 'reports/junit.xml'
-                    // HTML coverage report, downloadable from the build's "Artifacts"
+                    // Feedback report (reports/feedback.txt): result, build info, every test, failures, coverage
+                    bat 'node scripts/ci-summary.js'
+                    bat 'type reports\\feedback.txt'
+                    // feedback.txt + HTML coverage report, downloadable from the build's "Artifacts"
                     archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
                 }
             }
