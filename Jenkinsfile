@@ -1,7 +1,8 @@
 // AgriSathi CI pipeline (Declarative)
 // Flow: Checkout -> Install -> Automated Tests -> Build -> Archive
-// Continuous feedback: JUnit test trends, coverage report, build description,
-// stage view / pipeline graph, and email on failure / recovery.
+// Trigger: GitHub webhook (push) -> ngrok -> Jenkins /github-webhook/ -> githubPush()
+// Continuous feedback: commit status on GitHub, JUnit test trends, coverage report,
+// build description, stage view / pipeline graph, and email on failure / recovery.
 
 pipeline {
     // Run on any available agent (this Jenkins runs on Windows, so steps use `bat`)
@@ -12,10 +13,9 @@ pipeline {
                description: 'Email address for build feedback (leave empty to skip email)')
     }
 
-    // Automatically start a build when new commits are pushed.
-    // Jenkins runs on localhost (GitHub webhooks cannot reach it), so poll Git every ~5 min.
+    // Start a build as soon as GitHub sends a push webhook for this repo
     triggers {
-        pollSCM('H/5 * * * *')
+        githubPush()
     }
 
     options {
@@ -38,6 +38,7 @@ pipeline {
                 echo 'Checking out source code...'
                 checkout scm
                 bat 'git log -1 --pretty=format:"Commit %%h by %%an: %%s"'
+                script { setGitHubStatus('PENDING', 'Build and tests running on Jenkins') }
             }
         }
 
@@ -97,15 +98,20 @@ pipeline {
 
         success {
             echo 'Jenkins Pipeline completed successfully! All tests passed and build archived.'
+            script { setGitHubStatus('SUCCESS', env.CI_SUMMARY ?: 'All tests passed') }
         }
 
         unstable {
             echo 'Pipeline is UNSTABLE: some tests failed. Check the "Tests" tab for details.'
+            script { setGitHubStatus('FAILURE', env.CI_SUMMARY ?: 'Some tests failed') }
         }
 
         failure {
             echo 'Jenkins Pipeline failed! Check the failing stage and test results.'
-            script { notify('FAILED') }
+            script {
+                setGitHubStatus('FAILURE', env.CI_SUMMARY ?: 'Pipeline failed')
+                notify('FAILED')
+            }
         }
 
         fixed {
@@ -131,4 +137,19 @@ def notify(String status) {
                     Test results: <a href="${env.BUILD_URL}testReport">${env.BUILD_URL}testReport</a></p>""",
         attachLog: true
     )
+}
+
+// Show the build result (pending / ✓ / ✗) next to the commit on GitHub.
+// Uses the GitHub Server credential (PAT, Secret text) from Manage Jenkins > System > GitHub.
+// Errors are ignored so a GitHub API problem never breaks the build itself.
+def setGitHubStatus(String state, String message) {
+    step([
+        $class: 'GitHubCommitStatusSetter',
+        reposSource: [$class: 'ManuallyEnteredRepositorySource',
+                      url: 'https://github.com/shubhanksaxena2005-hub/DEVOPS-2026-CSE-13'],
+        contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'Jenkins CI'],
+        errorHandlers: [[$class: 'ShallowAnyErrorHandler']],
+        statusResultSource: [$class: 'ConditionalStatusResultSource',
+                             results: [[$class: 'AnyBuildResult', state: state, message: message]]]
+    ])
 }
