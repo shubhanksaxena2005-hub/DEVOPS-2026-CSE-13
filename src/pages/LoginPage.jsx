@@ -68,7 +68,7 @@ export default function LoginPage() {
             <Sprout className="h-6 w-6" />
           </div>
           <h1 className="text-xl font-display font-bold text-gray-900">AgriSathi</h1>
-          <p className="text-sm text-gray-500">Your partner in smarter farming</p>
+          <p className="text-sm text-gray-500">Your digital farm record book</p>
         </div>
 
         <h2 className="text-lg font-semibold text-gray-900 text-center mb-6">Login to your account</h2>

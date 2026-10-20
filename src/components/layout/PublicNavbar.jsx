@@ -4,11 +4,8 @@ import { Menu, X } from 'lucide-react';
 import Logo from './Logo';
 
 const navLinks = [
-  { label: 'Platform', href: '#features' },
-  { label: 'How It Works', href: '#workflow' },
-  { label: 'For Farmers', href: '#for-farmers' },
-  { label: 'Market Prices', href: '#market' },
-  { label: 'Resources', href: '#resources' },
+  { label: 'Features', href: '#features' },
+  { label: 'How It Works', href: '#how-it-works' },
 ];
 
 export default function PublicNavbar() {
