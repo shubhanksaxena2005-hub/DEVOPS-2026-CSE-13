@@ -1,50 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Map,
-  Sprout,
-  Bug,
-  Cloud,
-  TrendingUp,
-  FlaskConical,
-  Landmark,
-  CalendarDays,
-  Wallet,
-  BookOpen,
-  Users,
-  Bell,
-  Settings,
-  LogOut,
-  UserCheck,
-  FileBarChart2,
-  X,
-} from 'lucide-react';
+import { LayoutDashboard, Map, Wallet, BookOpen, Settings, LogOut, X } from 'lucide-react';
 import Logo from './Logo';
+import { useAuth } from '../../context/AuthContext';
 
 const farmerNav = [
   { to: '/farmer/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/farmer/my-farm', label: 'My Farm', icon: Map },
-  { to: '/farmer/crop-recommendation', label: 'Crop Recommendation', icon: Sprout },
-  { to: '/farmer/disease-detection', label: 'Disease Detection', icon: Bug },
-  { to: '/farmer/weather', label: 'Weather', icon: Cloud },
-  { to: '/farmer/mandi-prices', label: 'Mandi Prices', icon: TrendingUp },
-  { to: '/farmer/fertilizer-recommendation', label: 'Fertilizer', icon: FlaskConical },
-  { to: '/farmer/schemes', label: 'Govt Schemes', icon: Landmark },
-  { to: '/farmer/crop-calendar', label: 'Crop Calendar', icon: CalendarDays },
   { to: '/farmer/expenses', label: 'Expenses', icon: Wallet },
   { to: '/farmer/journal', label: 'Activity Journal', icon: BookOpen },
-  { to: '/farmer/experts', label: 'Expert Consultation', icon: Users },
-  { to: '/farmer/notifications', label: 'Notifications', icon: Bell },
   { to: '/farmer/profile', label: 'Profile', icon: Settings },
-];
-
-const adminNav = [
-  { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/farmers', label: 'Farmers', icon: Users },
-  { to: '/admin/experts', label: 'Experts', icon: UserCheck },
-  { to: '/admin/schemes', label: 'Schemes', icon: Landmark },
-  { to: '/admin/crops', label: 'Crop Information', icon: Sprout },
-  { to: '/admin/reports', label: 'Reports', icon: FileBarChart2 },
 ];
 
 function NavItems({ items, onNavigate }) {
@@ -74,11 +38,22 @@ function NavItems({ items, onNavigate }) {
   );
 }
 
-export default function Sidebar({ role = 'farmer', onClose }) {
+const initials = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('');
+
+export default function Sidebar({ onClose }) {
   const navigate = useNavigate();
-  const navItems = role === 'admin' ? adminNav : farmerNav;
+  const { user, logout } = useAuth();
+
+  const place = [user?.location?.district, user?.location?.state].filter(Boolean).join(', ');
 
   const handleLogout = () => {
+    logout();
     navigate('/login');
   };
 
@@ -94,17 +69,17 @@ export default function Sidebar({ role = 'farmer', onClose }) {
       </div>
 
       <div className="flex-1 overflow-y-auto py-4">
-        <NavItems items={navItems} onNavigate={onClose} />
+        <NavItems items={farmerNav} onNavigate={onClose} />
       </div>
 
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="h-9 w-9 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-semibold">
-            RY
+            {initials(user?.name)}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">Ramesh Yadav</p>
-            <p className="text-xs text-gray-500">Dindori, Nashik</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+            <p className="text-xs text-gray-500 truncate">{place || user?.email}</p>
           </div>
         </div>
         <button

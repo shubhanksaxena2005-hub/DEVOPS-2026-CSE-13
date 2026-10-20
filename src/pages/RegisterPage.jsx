@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Sprout, Eye, EyeOff } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { user, register } = useAuth();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -14,6 +16,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -53,16 +56,27 @@ export default function RegisterPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setServerError('');
     if (!validate()) return;
 
     setLoading(true);
-    setTimeout(() => {
+    try {
+      await register({
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+      // Account created and logged in -> start with an empty dashboard
+      navigate('/farmer/dashboard', { replace: true });
+    } catch (err) {
+      setServerError(err.message);
       setLoading(false);
-      navigate('/login');
-    }, 800);
+    }
   };
+
+  if (user) return <Navigate to="/farmer/dashboard" replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-earth-50 px-4 py-12">
@@ -72,10 +86,16 @@ export default function RegisterPage() {
             <Sprout className="h-6 w-6" />
           </div>
           <h1 className="text-xl font-display font-bold text-gray-900">AgriSathi</h1>
-          <p className="text-sm text-gray-500">Your partner in smarter farming</p>
+          <p className="text-sm text-gray-500">Your digital farm record book</p>
         </div>
 
         <h2 className="text-lg font-semibold text-gray-900 text-center mb-6">Create your account</h2>
+
+        {serverError && (
+          <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {serverError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>

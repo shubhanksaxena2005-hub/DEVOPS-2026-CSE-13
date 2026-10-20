@@ -2,8 +2,6 @@ import Farm from '../models/Farm.js';
 import Crop from '../models/Crop.js';
 import Expense from '../models/Expense.js';
 import FarmActivity from '../models/FarmActivity.js';
-import Notification from '../models/Notification.js';
-import MandiPrice from '../models/MandiPrice.js';
 import GovernmentScheme from '../models/GovernmentScheme.js';
 import Expert from '../models/Expert.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -39,17 +37,28 @@ export const getDashboard = asyncHandler(async (req, res) => {
     });
   }
 
-  // Farmer-specific dashboard
-  const [farms, crops, expenses, activities, notifications, mandiPrices] = await Promise.all([
-    Farm.find({ farmer: req.user._id }).sort('-createdAt'),
-    Crop.find({ farmer: req.user._id, isActive: true }).sort('-createdAt'),
-    Expense.find({ farmer: req.user._id }).sort('-date').limit(5),
-    Notification.find({ user: req.user._id }).sort('-createdAt').limit(10),
-    MandiPrice.find().sort('-date').limit(5),
-  ]);
+  // Farmer-specific dashboard — everything is computed from the farmer's own records
+  const farmer = req.user._id;
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const activeCrops = crops.filter((c) => c.isActive !== false);
+  const [farms, expenseCount, recentExpenses, byCategory, monthTotals, activityCount, recentActivities] =
+    await Promise.all([
+      Farm.find({ farmer }).sort('-createdAt'),
+      Expense.countDocuments({ farmer }),
+      Expense.find({ farmer }).sort('-date').limit(5),
+      Expense.aggregate([
+        { $match: { farmer } },
+        { $group: { _id: '$category', total: { $sum: '$amount' } } },
+        { $sort: { total: -1 } },
+      ]),
+      Expense.aggregate([
+        { $match: { farmer, date: { $gte: monthStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      FarmActivity.countDocuments({ farmer }),
+      FarmActivity.find({ farmer }).sort('-date').limit(5),
+    ]);
 
   res.status(200).json({
     success: true,
@@ -59,47 +68,23 @@ export const getDashboard = asyncHandler(async (req, res) => {
         name: req.user.name,
         email: req.user.email,
         location: req.user.location,
-        profileImage: req.user.profileImage,
       },
-      farms,
       farmsSummary: {
         count: farms.length,
         totalArea: farms.reduce((sum, f) => sum + (f.landArea || 0), 0),
+        farms,
       },
-      crops: activeCrops,
-      cropsSummary: {
-        count: activeCrops.length,
-      },
-      expenses: expenses.slice(0, 5),
       expensesSummary: {
-        total: totalExpenses,
-        recentCount: expenses.length,
+        count: expenseCount,
+        total: byCategory.reduce((sum, c) => sum + c.total, 0),
+        thisMonth: monthTotals[0]?.total || 0,
+        byCategory: byCategory.map((c) => ({ category: c._id, total: c.total })),
       },
-      activities: await FarmActivity.find({ farmer: req.user._id }).sort('-date').limit(5),
-      notifications,
-      unreadNotifications: notifications.filter((n) => !n.read).length,
-      // Weather placeholder — no live API connected yet
-      weather: {
-        isPlaceholder: true,
-        location: req.user.location?.district || req.user.location?.state || 'Unknown',
-        note: 'Live weather data not connected. Integrate a weather API to receive real forecasts.',
+      activitiesSummary: {
+        count: activityCount,
       },
-      // Mandi placeholders
-      mandi: {
-        isPlaceholder: true,
-        message: 'Browsing sample mandi data',
-        prices: mandiPrices.map((p) => ({
-          crop: p.crop,
-          market: p.market,
-          current: p.current,
-          previous: p.previous,
-          change: p.change,
-          changePercent: p.changePercent,
-          unit: p.unit,
-          date: p.date,
-          isSample: p.isSample || true,
-        })),
-      },
+      recentExpenses,
+      recentActivities,
     },
   });
 });

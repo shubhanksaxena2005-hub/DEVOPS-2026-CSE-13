@@ -5,3 +5,13 @@ dist
 *.onedrive-broken
 server/uploads/*
 !server/uploads/.gitkeep
+reports
+
+# Local tooling / editor state
+.claude/
+.playwright-mcp/
+
+# Local copies and archives (not part of the project)
+agrisathi/
+student-registration/
+*.zip

@@ -1,64 +1,65 @@
 # AgriSathi
 
-A farmer-assistance web platform that brings crop recommendations, weather alerts, mandi (market) prices, disease detection, and expert consultation together in one app for Indian farmers, plus an admin panel to manage the platform.
+A farm-management web app for Indian farmers. A farmer creates an account, records their farm, tracks every expense, keeps a daily activity journal, and sees live totals on a dashboard. All data is entered by the user and stored in MongoDB — there is no sample or seeded data.
 
-## Current status
+## Features
 
-The **frontend is fully built and functional** — all pages render correctly with no console errors, the full test suite passes, and the production build is optimized. The frontend currently runs on local mock data (`src/data/mockData.js`); it is not yet wired up to the backend API.
+| # | Feature | What it does |
+|---|---------|--------------|
+| 1 | **Register & Login** | Real accounts with hashed passwords (bcrypt) and JWT sessions. Wrong passwords and duplicate emails are rejected; the session survives a page reload. |
+| 2 | **Farmer Dashboard** | Live totals from your own records: farms and land area, total and this-month spending, spending by category, recent expenses and activities. New users see a "Get started" checklist. |
+| 3 | **My Farm** | Add, edit and delete farms: location, land area and unit, soil type and pH, water source. |
+| 4 | **Farm Expenses** | Add, edit, delete and filter expenses by category, with summary cards and a category pie chart. |
+| 5 | **Activity Journal** | A dated timeline of farm work (sowing, irrigation, harvest, …) with crop, time spent and notes. |
+| 6 | **Profile** | Update name, phone and village/district/state; the sidebar updates instantly. |
 
-The **backend** (Express + MongoDB) exists with models, routes, and controllers for all major features, and has been verified to boot and connect to MongoDB, but the frontend does not call it yet.
+Every farmer only ever sees their own data (enforced on the server).
 
 ## Tech stack
 
 **Frontend:** React 18, Vite, React Router, Tailwind CSS, Recharts, lucide-react
-**Backend:** Node.js, Express, MongoDB (Mongoose), JWT auth, Multer
-**Testing:** Vitest, React Testing Library
+**Backend:** Node.js, Express, MongoDB (Mongoose), JWT auth, bcrypt
+**Testing / CI:** Vitest, React Testing Library, Jenkins (see `Jenkinsfile`)
 
-## Features built so far
+## Running locally
 
-**Public pages**
-- Landing page, Login (with Farmer/Admin role selection), Register
+Prerequisites: Node.js 20+ and MongoDB running on `localhost:27017`.
 
-**Farmer dashboard** (`/farmer/*`)
-- Dashboard, My Farm, Crop Recommendation, Disease Detection, Weather, Mandi Prices, Fertilizer Recommendation, Government Schemes, Crop Calendar, Farm Expenses, Farm Journal, Expert Consultation, Notifications, Profile Settings
-
-**Admin dashboard** (`/admin/*`)
-- Dashboard, Manage Farmers, Manage Experts, Manage Schemes, Manage Crops, Manage Reports
-
-**Backend API** (`server/`)
-- Auth, Farms, Crops, Expenses, Activities, Schemes, Mandi prices, Experts, Notifications, Dashboard, Disease scans, Admin routes
-
-## What's been fixed/improved
-
-- Fixed a broken `index.html` that was missing the app's mount point and script tag (the app would not render at all)
-- Rebuilt the Login and Register pages, which referenced CSS files that didn't exist and were inconsistent with the rest of the app's design
-- Fixed the Vite/Vitest config so the test suite runs correctly
-- Route-based code-splitting: the main JS bundle dropped from ~788KB to ~213KB, with each page now loading as its own chunk
-- Added a favicon and fixed the browser tab title
-- Hardened `.gitignore` to keep build output, logs, and secrets (`.env`) out of version control
-
-## Getting started
-
-### Frontend
-```bash
-npm install
-npm run dev       # start dev server at http://localhost:5173
-npm run build     # production build
-npm test          # run the test suite
-```
-
-### Backend
+**1. Backend** (terminal 1)
 ```bash
 cd server
 npm install
-cp .env.example .env   # fill in your MongoDB URI and JWT secret
-npm run dev             # start dev server at http://localhost:5000
+cp .env.example .env    # then set JWT_SECRET to a long random string
+npm start               # API on http://localhost:5000
 ```
 
-## Roadmap
+**2. Frontend** (terminal 2, project root)
+```bash
+npm install
+npm run dev             # app on http://localhost:5173 (proxies /api to :5000)
+```
 
-- [ ] Accessibility pass (labels, alt text, focus states, contrast)
-- [ ] Mobile/responsive polish across farmer and admin pages
-- [ ] Expand test coverage beyond auth/landing pages
-- [ ] Connect frontend to the real backend API (replacing mock data)
-- [ ] Lint/format setup and code cleanup
+Open http://localhost:5173, click **Register**, and start adding your own data.
+
+## API
+
+All routes except register/login need an `Authorization: Bearer <token>` header.
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/api/auth/register` | Create a farmer account |
+| POST | `/api/auth/login` | Log in, returns a JWT |
+| GET / PUT | `/api/auth/me`, `/api/auth/profile` | Current user / update profile |
+| GET | `/api/dashboard` | Dashboard totals |
+| GET POST PUT DELETE | `/api/farms` | Farms |
+| GET POST PUT DELETE | `/api/expenses` | Expenses |
+| GET POST PUT DELETE | `/api/activities` | Journal entries |
+
+## Tests & CI
+
+```bash
+npm test          # run all tests
+npm run test:ci   # tests + coverage + JUnit report (used by Jenkins)
+```
+
+The Jenkins pipeline (`Jenkinsfile`) runs on every push: checkout, install, automated tests, build, then archives the build. Test results, coverage and a summary line are published on each build, and an email can be sent on failure or recovery.

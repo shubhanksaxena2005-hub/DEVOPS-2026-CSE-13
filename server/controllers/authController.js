@@ -15,13 +15,13 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const register = asyncHandler(async (req, res, next) => {
-  const { name, email, password, phone, role, location } = req.body;
+  const { name, email, password, phone, location } = req.body;
 
   if (!name || !email || !password) {
     return next(new AppError('Please provide name, email and password', 400));
   }
 
-  const userExists = await User.findOne({ email });
+  const userExists = await User.findOne({ email: email.toLowerCase().trim() });
   if (userExists) {
     return next(new AppError('User already exists with this email', 400));
   }
@@ -31,7 +31,8 @@ export const register = asyncHandler(async (req, res, next) => {
     email,
     password,
     phone: phone || '',
-    role: role || 'farmer',
+    // Public sign-up always creates a farmer account (role can't be self-assigned)
+    role: 'farmer',
     location: location || {},
   });
 
@@ -77,7 +78,7 @@ export const login = asyncHandler(async (req, res, next) => {
     return next(new AppError('Please provide email and password', 400));
   }
 
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
   if (!user) {
     return next(new AppError('Invalid email or password', 401));
   }
@@ -147,7 +148,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id);
 
   if (name) user.name = name;
-  if (phone) user.phone = phone;
+  if (phone !== undefined) user.phone = phone;
   if (location) user.location = { ...user.location, ...location };
   if (req.file) user.profileImage = `/uploads/${req.file.filename}`;
 
