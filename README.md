@@ -19,13 +19,14 @@ Every farmer only ever sees their own data (enforced on the server).
 
 **Frontend:** React 18, Vite, React Router, Tailwind CSS, Recharts, lucide-react
 **Backend:** Node.js, Express, MongoDB (Mongoose), JWT auth, bcrypt
+**Branches:** `main` / `shubhank` — frontend · `surbhi` — backend API
 **Testing / CI:** Vitest, React Testing Library, Jenkins (see `Jenkinsfile`)
 
 ## Running locally
 
 Prerequisites: Node.js 20+ and MongoDB running on `localhost:27017`.
 
-**1. Backend** (terminal 1)
+**1. Backend** (terminal 1) — the API code lives on the `surbhi` branch
 ```bash
 cd server
 npm install
