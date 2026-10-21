@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AgriSathi
 
 A farm-management web app for Indian farmers. A farmer creates an account, records their farm, tracks every expense, keeps a daily activity journal, and sees live totals on a dashboard. All data is entered by the user and stored in MongoDB — there is no sample or seeded data.
@@ -45,12 +46,35 @@ Open http://localhost:5173, click **Register**, and start adding your own data.
 ## API
 
 All routes except register/login need an `Authorization: Bearer <token>` header.
+=======
+# AgriSathi — Backend API
+
+Express + MongoDB REST API for AgriSathi. The React frontend is on the `shubhank` branch, and the complete project is on `main`.
+
+## Run locally
+
+Prerequisites: Node.js 20+ and MongoDB on `localhost:27017`.
+
+```bash
+cd server
+npm install
+cp .env.example .env    # set JWT_SECRET to a long random string
+npm start               # http://localhost:5000
+```
+
+Health check: `GET http://localhost:5000/api/health`
+
+## Endpoints
+
+All routes except register/login need `Authorization: Bearer <token>`.
+>>>>>>> surbhi
 
 | Method | Route | Purpose |
 |--------|-------|---------|
 | POST | `/api/auth/register` | Create a farmer account |
 | POST | `/api/auth/login` | Log in, returns a JWT |
 | GET / PUT | `/api/auth/me`, `/api/auth/profile` | Current user / update profile |
+<<<<<<< HEAD
 | GET | `/api/dashboard` | Dashboard totals |
 | GET POST PUT DELETE | `/api/farms` | Farms |
 | GET POST PUT DELETE | `/api/expenses` | Expenses |
@@ -64,3 +88,11 @@ npm run test:ci   # tests + coverage + JUnit report (used by Jenkins)
 ```
 
 The Jenkins pipeline (`Jenkinsfile`) runs on every push: checkout, install, automated tests, build, then archives the build. Test results, coverage and a summary line are published on each build, and an email can be sent on failure or recovery.
+=======
+| GET | `/api/dashboard` | Dashboard totals for the logged-in farmer |
+| GET POST PUT DELETE | `/api/farms` | Farms |
+| GET POST PUT DELETE | `/api/expenses` | Expenses |
+| GET POST PUT DELETE | `/api/activities` | Activity journal |
+
+Passwords are hashed with bcrypt, and every farmer can only read or change their own records.
+>>>>>>> surbhi
